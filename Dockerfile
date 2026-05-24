@@ -22,12 +22,7 @@ COPY config /app/config
 # Copy SDK libraries (both x86_64 and ARM64)
 COPY lib /app/lib
 
-# Install utilities
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime health checks use Python stdlib, so no extra OS packages are required.
 
 # Copy correct SDK to /usr/local/lib based on platform architecture
 RUN if [ -f "lib/wework-arm64/libWeWorkFinanceSdk_C.so" ]; then \
