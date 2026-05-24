@@ -111,7 +111,7 @@ class DatabaseService:
                 "chat_id": "TEXT",
                 "to_user": "TEXT",
                 "sender_name": "TEXT",
-                "updated_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
+                "updated_at": "DATETIME",
             },
             "destinations": {
                 "workspace_id": "TEXT DEFAULT 'default'",
@@ -129,6 +129,10 @@ class DatabaseService:
             for column, definition in columns.items():
                 if column not in existing:
                     cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                    if table == "unified_messages" and column == "updated_at":
+                        cursor.execute(
+                            "UPDATE unified_messages SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"
+                        )
 
     @staticmethod
     def message_exists(msg: UnifiedMessage) -> bool:
