@@ -9,10 +9,10 @@ from src.services.wecom import WeComService, init_wecom, download_image
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("wecom_tunnel")
 
-# 配置
-TARGET_BOT = "@clawlinus_bot" # 刚才确认的 Target Bot
-TDL_PATH = "/usr/local/bin/tdl"
-TDL_DATA_DIR = "/app/data/tdl"
+# 实验性 Telegram 中转配置
+TARGET_BOT = os.getenv("TELEGRAM_TARGET_BOT", "")
+TDL_PATH = os.getenv("TDL_PATH", "/usr/local/bin/tdl")
+TDL_DATA_DIR = os.getenv("TDL_DATA_DIR", "/app/data/tdl")
 
 # 强制开启调试日志以观察轮询过程
 logging.getLogger("src.services.wecom.polling").setLevel(logging.DEBUG)
@@ -23,23 +23,25 @@ async def send_to_telegram(sender_name, content, media_path=None):
     使用 tdl 模拟用户向 Bot 发送消息
     """
     caption = f"[WeCom:{sender_name}] {content}"
+    if not TARGET_BOT:
+        logger.error("TELEGRAM_TARGET_BOT 未配置，跳过 Telegram 中转")
+        return
     
     cmd = [TDL_PATH, "upload", "--chat", TARGET_BOT, "--ns", "default", "--storage", f"path={TDL_DATA_DIR},type=bolt"]
     
     # 增加代理配置 (Linus: 既然 tc 没翻墙，那就给它加个梯子)
     proxy_url = os.getenv("TELEGRAM_PROXY_URL")
-    if proxy_url:
-        # 显式转换为字符串，防止 NoneType 导致 join 报错
-        cmd.extend(["--proxy", str(proxy_url)])
-        cmd.extend(["--path", media_path, "--caption", caption])
-    else:
-        # tdl upload 必须有文件，如果是纯文本，我们造一个临时 txt 或者直接用 message 发送？
-        # tdl upload 主要是传文件。如果是纯文本，我们暂时用一个很小的 placeholder 或者寻找 tdl 直接发消息的方法。
-        # 修正：tdl upload 不支持纯文本。我们可以临时写一个 text 文件发过去。
+    path_to_send = media_path
+    if not path_to_send:
         temp_file = f"/tmp/msg_{int(time.time())}.txt"
         with open(temp_file, "w") as f:
             f.write(content)
-        cmd.extend(["--path", temp_file, "--caption", f"[WeCom:{sender_name}]"])
+        path_to_send = temp_file
+
+    if proxy_url:
+        # 显式转换为字符串，防止 NoneType 导致 join 报错
+        cmd.extend(["--proxy", str(proxy_url)])
+    cmd.extend(["--path", path_to_send, "--caption", caption if media_path else f"[WeCom:{sender_name}]"])
 
     logger.info(f"Running tdl command: {' '.join(cmd)}")
     try:

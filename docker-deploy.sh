@@ -1,5 +1,5 @@
 #!/bin/bash
-# CraftSaver 部署脚本
+# wecom2notes 部署脚本
 # 在项目根目录运行
 
 set -e
@@ -10,7 +10,7 @@ cd "$SCRIPT_DIR"
 # 读取端口配置
 APP_PORT=${APP_PORT:-8001}
 
-echo "开始构建和启动 CraftSaver..."
+echo "开始构建和启动 wecom2notes..."
 echo "端口: $APP_PORT"
 
 # 执行 docker-compose

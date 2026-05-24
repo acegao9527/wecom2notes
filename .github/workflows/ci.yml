@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+      - name: Compile
+        run: python -m compileall -q main.py src
+      - name: Docker build
+        run: docker build -t wecom2notes:ci .

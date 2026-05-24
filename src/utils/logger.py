@@ -53,7 +53,7 @@ def setup_logging():
         "src.api": "API",
         "src.handlers": "HANDLERS",
         "src.services.message_processor": "RPA",
-        "craftsaver.startup": "STARTUP",  # 应用启动日志
+        "wecom2notes.startup": "STARTUP",  # 应用启动日志
 
         # 第三方库控制
         "uvicorn": "UVICORN",

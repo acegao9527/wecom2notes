@@ -3,9 +3,10 @@ Craft 集成服务模块
 """
 import json
 import logging
-import time
 from typing import List, Dict
 
+import asyncio
+import httpx
 import requests
 
 logger = logging.getLogger(__name__)
@@ -40,8 +41,7 @@ async def save_blocks_to_craft(
     for i, block in enumerate(blocks):
         logger.info(f"[Craft] Block[{i}]: {block}")
 
-    # 添加请求间隔，避免限流
-    time.sleep(0.5)
+    await asyncio.sleep(0.5)
 
     url = f"{API_BASE_URL}/{link_id}/api/v1/blocks"
     headers = {
@@ -57,13 +57,13 @@ async def save_blocks_to_craft(
     }
 
     try:
-        # 打印完整的 HTTP 请求信息
         logger.info(f"[Craft] === HTTP Request ===")
         logger.info(f"[Craft] POST {url}")
         token_preview = (document_token or "")[:20]
         logger.info(f"[Craft] Headers: {{'Authorization': 'Bearer {token_preview}...', 'Content-Type': 'application/json'}}")
-        logger.info(f"[Craft] Body: {body}")
-        response = requests.request("POST", url, json=body, headers=headers)
+        logger.info(f"[Craft] Body: blocks={len(blocks)}, pageId={document_id}")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, json=body, headers=headers)
         logger.info(f"[Craft] === HTTP Response ===")
         logger.info(f"[Craft] Status: {response.status_code}")
         logger.info(f"[Craft] Body: {response.text[:500] if response.text else 'empty'}")
@@ -86,8 +86,9 @@ async def save_blocks_to_craft(
             elif response.status_code == 429:
                 # 请求频率限制，添加延迟后重试
                 logger.warning(f"[Craft] 请求频率限制，等待后重试...")
-                time.sleep(2)
-                response = requests.request("POST", url, json=body, headers=headers)
+                await asyncio.sleep(2)
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.post(url, json=body, headers=headers)
                 logger.info(f"[Craft] 重试 Status: {response.status_code}")
                 if response.status_code in (200, 201):
                     logger.info(f"[Craft] 重试成功: {len(blocks)} blocks")

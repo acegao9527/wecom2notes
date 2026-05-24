@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 def upload_to_cos(local_path: str) -> Optional[str]:
     """上传文件到 COS，返回公开访问 URL"""
     try:
-        from src.services.cos import upload_image
-        url = upload_image(local_path)
+        from src.storage.assets import get_asset_storage
+        url = get_asset_storage().save(local_path)
         if url:
             return url
         logger.error(f"[Formatter] COS 上传失败: {local_path}")

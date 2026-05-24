@@ -53,13 +53,22 @@ def get_last_seq_from_file() -> int:
     """
     获取上次的 seq，优先使用配置中的最大偏移量
     """
-    file_seq = 0
+    try:
+        from src.services.database import DatabaseService
+        db_seq = DatabaseService.get_last_seq()
+        if db_seq:
+            file_seq = db_seq
+        else:
+            file_seq = 0
+    except Exception:
+        file_seq = 0
+
     if os.path.exists(WECOM_SEQ_FILE):
         try:
             with open(WECOM_SEQ_FILE, "r") as f:
                 content = f.read().strip()
                 if content:
-                    file_seq = int(content)
+                    file_seq = max(file_seq, int(content))
                     logger_polling.info(f"[WeCom] Loaded seq from {WECOM_SEQ_FILE}: {file_seq}")
         except Exception as e:
             logger_polling.error(f"[WeCom] Error reading seq file: {e}")
@@ -76,6 +85,11 @@ def save_last_seq_to_file(seq: int):
     try:
         with open(WECOM_SEQ_FILE, "w") as f:
             f.write(str(seq))
+        try:
+            from src.services.database import DatabaseService
+            DatabaseService.set_source_cursor("wecom", seq)
+        except Exception as e:
+            logger_polling.warning(f"[WeCom] Error saving seq to db: {e}")
     except Exception as e:
         logger_polling.error(f"[WeCom] Error saving seq file: {e}")
 
@@ -527,7 +541,7 @@ def fetch_messages(limit: int = 1000, timeout: int = 5) -> List[dict]:
 
 # --- 新增轮询相关功能 ---
 import asyncio
-from src.models.chat_record import UnifiedMessage
+from src.models.chat_record import AttachmentInfo, UnifiedMessage
 from src.services.message_processor import process_message
 
 def parse_wecom_message(msg: dict) -> Optional[UnifiedMessage]:
@@ -537,15 +551,24 @@ def parse_wecom_message(msg: dict) -> Optional[UnifiedMessage]:
     try:
         msg_id = msg.get("msgid")
         from_user = msg.get("from")
+        to_user = msg.get("to")
+        chat_id = msg.get("roomid") or msg.get("tolist") or to_user
         # 企微 msgtime 是秒级时间戳
         create_time = int(msg.get("msgtime", time.time()))
+        if create_time > 1e11:
+            create_time = create_time // 1000
         msg_type = msg.get("msgtype")
         content = ""
+        attachments = []
 
         # 根据不同消息类型提取核心内容
         # 注意：这里的 content 格式需要与 message_processor 和 formatter 里的逻辑对应
         if msg_type in ["text", "markdown"]:
             content = msg.get(msg_type, {}).get("content", "")
+            if msg_type == "text":
+                import re
+                if re.match(r"^https?://[^\s]+$", content.strip(), re.IGNORECASE):
+                    msg_type = "link"
         elif msg_type in ["image", "video", "voice", "file"]:
             # 媒体消息：尝试下载文件并获取本地路径
             media_data = msg.get(msg_type, {})
@@ -572,13 +595,20 @@ def parse_wecom_message(msg: dict) -> Optional[UnifiedMessage]:
 
                 if local_path:
                     content = local_path
+                    attachments.append(
+                        AttachmentInfo(
+                            file_name=original_name or os.path.basename(local_path),
+                            local_path=local_path,
+                        )
+                    )
                 else:
                     logger_polling.warning(f"[WeCom Parser] 下载媒体失败: {msg_id}")
                     content = json.dumps(media_data)
             else:
                 content = json.dumps(media_data)
         elif msg_type == "link":
-            content = msg.get("link", {}).get("link_url", "")
+            link_data = msg.get("link", {})
+            content = link_data.get("link_url") or link_data.get("url", "")
         else:
             # 对于其他未知类型，记录一个摘要
             content = f"Unsupported message type: {msg_type}"
@@ -594,7 +624,11 @@ def parse_wecom_message(msg: dict) -> Optional[UnifiedMessage]:
             content=content,
             from_user=from_user,
             create_time=create_time,
-            raw_data=msg
+            raw_data=msg,
+            chat_id=chat_id if isinstance(chat_id, str) else None,
+            to_user=to_user,
+            sender_name=msg.get("from_name") or msg.get("sender_name"),
+            attachments=attachments,
         )
     except Exception as e:
         logger_polling.error(f"[WeCom Parser] 解析消息失败: {e}", exc_info=True)
@@ -637,4 +671,3 @@ async def run_wecom_polling():
         except Exception as e:
             logger_polling.error(f"[WeCom Polling] 轮询错误: {e}", exc_info=True)
             await asyncio.sleep(15)
-

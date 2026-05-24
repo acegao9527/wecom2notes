@@ -1,4 +1,4 @@
-# Multi-stage build for CraftSaver - WeCom to Craft Connector
+# Multi-stage build for wecom2notes - WeCom to Notes Connector
 FROM python:3.12-slim
 
 # Set timezone
@@ -17,8 +17,7 @@ COPY src /app/src
 
 # Copy project root files
 COPY main.py .
-COPY .env .
-COPY private_key.pem .
+COPY config /app/config
 
 # Copy SDK libraries (both x86_64 and ARM64)
 COPY lib /app/lib
@@ -50,7 +49,7 @@ EXPOSE ${APP_PORT}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${APP_PORT}/')" || exit 1
+    CMD sh -c "python -c \"import os, urllib.request; urllib.request.urlopen('http://localhost:%s/' % os.getenv('APP_PORT', '8001'))\"" || exit 1
 
 # Start the application
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${APP_PORT}"]

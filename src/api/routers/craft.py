@@ -18,7 +18,12 @@ async def craft_save(message: CraftMessage):
     """保存消息到 Craft"""
     try:
         block = {"type": "text", "markdown": message.message}
-        await save_blocks_to_craft([block])
+        await save_blocks_to_craft(
+            [block],
+            link_id=message.link_id,
+            document_id=message.document_id,
+            document_token=message.document_token,
+        )
         return {"status": "success", "message": "Saved to Craft"}
     except Exception as e:
         logger.error(f"[Craft] 保存失败: {e}")

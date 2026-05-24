@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+private_key.pem
+public_key.pem
+data
+docker/data
+.idea
+.DS_Store
+roadmap
+docs
+tests

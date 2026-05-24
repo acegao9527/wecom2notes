@@ -183,7 +183,6 @@ backend/data
 **/.DS_Store
 ._.DS_Store
 **/._.DS_Store
-LICENSE
 deploy.log
 private_key.pem
 public_key.pem

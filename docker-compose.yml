@@ -1,23 +1,26 @@
 services:
-  craftsaver:
+  wecom2notes:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: craftsaver
-    image: craftsaver:latest
+    container_name: wecom2notes
+    image: wecom2notes:latest
     restart: always
     ports:
       - "${APP_PORT:-8001}:${APP_PORT:-8001}"
     volumes:
       - ${HOST_IMAGE_DIR:-./data/images}:/app/images
       - ${HOST_DATA_DIR:-./data}:/app/data
+      - ${HOST_NOTES_DIR:-./data/notes}:/notes
       - ./lib:/app/lib
+      - ${HOST_PRIVATE_KEY_PATH:-./private_key.pem}:/app/private_key.pem:ro
     env_file:
       - .env
     environment:
       - TZ=Asia/Shanghai
-      - SQLITE_DB_PATH=/app/data/craftsaver.db
+      - SQLITE_DB_PATH=/app/data/wecom2notes.db
       - APP_PORT=${APP_PORT:-8001}
+      - WECOM_PRIVATE_KEY_PATH=/app/private_key.pem
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${APP_PORT:-8001}/')"]
       interval: 30s

@@ -1,0 +1,24 @@
+{
+  "destinations": [
+    {
+      "id": "obsidian-local",
+      "name": "Local Obsidian Vault",
+      "target_type": "obsidian",
+      "config": {
+        "root_path": "/notes/vault",
+        "base_dir": "WeCom",
+        "mode": "daily",
+        "link_style": "wiki"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "all-wecom-to-obsidian",
+      "match": {
+        "source": "wecom"
+      },
+      "destination_id": "obsidian-local"
+    }
+  ]
+}
