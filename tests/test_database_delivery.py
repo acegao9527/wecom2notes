@@ -75,6 +75,51 @@ class DatabaseDeliveryTest(unittest.TestCase):
         self.assertIn("updated_at", columns)
         self.assertIsNotNone(row["updated_at"])
 
+    def test_admin_crud_message_search_and_detail(self):
+        DatabaseService.upsert_destination(
+            "admin-md",
+            "Admin Markdown",
+            "markdown",
+            {"root_path": f"{self.tmp.name}/notes", "mode": "daily"},
+        )
+        self.assertEqual(len(DatabaseService.list_destinations()), 1)
+        self.assertTrue(DatabaseService.set_destination_enabled("admin-md", False))
+        self.assertFalse(DatabaseService.get_destination("admin-md"))
+        self.assertTrue(DatabaseService.set_destination_enabled("admin-md", True))
+
+        route_id = DatabaseService.create_route(
+            {"destination_id": "admin-md", "source": "wecom", "msg_type": "text", "keyword": "hello"}
+        )
+        self.assertTrue(
+            DatabaseService.update_route(
+                route_id,
+                {"destination_id": "admin-md", "source": "wecom", "msg_type": "text", "keyword": "updated"},
+            )
+        )
+
+        msg = UnifiedMessage(
+            msg_id="admin-msg",
+            source="wecom",
+            msg_type="text",
+            content="updated content",
+            from_user="u-admin",
+            create_time=1700000000,
+            raw_data={"hello": "world"},
+        )
+        self.assertTrue(DatabaseService.save_unified_message(msg))
+        DatabaseService.record_delivery("wecom", "admin-msg", "admin-md", "markdown", "failed", error="boom")
+
+        messages = DatabaseService.list_messages(keyword="updated")
+        self.assertEqual(messages["total"], 1)
+        self.assertEqual(messages["items"][0]["deliveries_failed"], 1)
+
+        detail = DatabaseService.get_message_detail("wecom", "admin-msg")
+        self.assertEqual(detail["message"]["raw_data"]["hello"], "world")
+        self.assertEqual(detail["deliveries"][0]["error"], "boom")
+
+        self.assertTrue(DatabaseService.delete_route(route_id))
+        self.assertTrue(DatabaseService.delete_destination("admin-md"))
+
 
 if __name__ == "__main__":
     unittest.main()

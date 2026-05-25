@@ -66,6 +66,15 @@ def _row_to_dict(row: sqlite3.Row | None) -> Optional[Dict[str, Any]]:
     return {key: row[key] for key in row.keys()}
 
 
+def _loads_json(value: str | None, fallback: Any) -> Any:
+    if not value:
+        return fallback
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return fallback
+
+
 class DatabaseService:
     """数据库服务类。"""
 
@@ -244,6 +253,12 @@ class DatabaseService:
             return 0
 
     @staticmethod
+    def list_source_cursors() -> List[Dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute("SELECT * FROM source_cursors ORDER BY updated_at DESC").fetchall()
+            return [_row_to_dict(row) or {} for row in rows]
+
+    @staticmethod
     def upsert_destination(destination_id: str, name: str, target_type: str, config: Dict[str, Any], is_enabled: bool = True) -> TargetConfig:
         with get_connection() as conn:
             conn.execute(
@@ -291,9 +306,35 @@ class DatabaseService:
             )
 
     @staticmethod
+    def get_destination_record(destination_id: str) -> Optional[Dict[str, Any]]:
+        with get_connection() as conn:
+            row = conn.execute("SELECT * FROM destinations WHERE id = ?", (destination_id,)).fetchone()
+            if not row:
+                return None
+            return DatabaseService._destination_row_to_dict(row)
+
+    @staticmethod
+    def set_destination_enabled(destination_id: str, is_enabled: bool) -> bool:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE destinations SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (int(is_enabled), destination_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
+    def delete_destination(destination_id: str) -> bool:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM routes WHERE destination_id = ?", (destination_id,))
+            cursor = conn.execute("DELETE FROM destinations WHERE id = ?", (destination_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
     def _destination_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         result = _row_to_dict(row) or {}
-        result["config"] = json.loads(result.pop("config_json") or "{}")
+        result["config"] = _loads_json(result.pop("config_json") or "{}", {})
         result["is_enabled"] = bool(result["is_enabled"])
         return result
 
@@ -320,6 +361,50 @@ class DatabaseService:
             )
             conn.commit()
             return int(cursor.lastrowid)
+
+    @staticmethod
+    def update_route(route_id: int, route: Dict[str, Any]) -> bool:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE routes
+                SET name = ?, source = ?, from_user = ?, chat_id = ?, msg_type = ?,
+                    keyword = ?, destination_id = ?, template = ?, is_enabled = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    route.get("name"),
+                    route.get("source", "wecom"),
+                    route.get("from_user"),
+                    route.get("chat_id"),
+                    route.get("msg_type"),
+                    route.get("keyword"),
+                    route["destination_id"],
+                    route.get("template"),
+                    int(route.get("is_enabled", True)),
+                    route_id,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
+    def set_route_enabled(route_id: int, is_enabled: bool) -> bool:
+        with get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE routes SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (int(is_enabled), route_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
+    def delete_route(route_id: int) -> bool:
+        with get_connection() as conn:
+            cursor = conn.execute("DELETE FROM routes WHERE id = ?", (route_id,))
+            conn.commit()
+            return cursor.rowcount > 0
 
     @staticmethod
     def list_routes(enabled_only: bool = False) -> List[Dict[str, Any]]:
@@ -411,9 +496,128 @@ class DatabaseService:
             results = []
             for row in rows:
                 item = _row_to_dict(row) or {}
-                item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
+                item["metadata"] = _loads_json(item.pop("metadata_json") or "{}", {})
                 results.append(item)
             return results
+
+    @staticmethod
+    def list_messages(
+        source: str | None = None,
+        from_user: str | None = None,
+        chat_id: str | None = None,
+        msg_type: str | None = None,
+        keyword: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        limit = max(1, min(limit, 500))
+        offset = max(0, offset)
+        where: List[str] = []
+        params: List[Any] = []
+        if source:
+            where.append("m.source = ?")
+            params.append(source)
+        if from_user:
+            where.append("m.from_user = ?")
+            params.append(from_user)
+        if chat_id:
+            where.append("m.chat_id = ?")
+            params.append(chat_id)
+        if msg_type:
+            where.append("m.msg_type = ?")
+            params.append(msg_type)
+        if keyword:
+            like = f"%{keyword}%"
+            where.append(
+                "(m.content LIKE ? OR m.msg_id LIKE ? OR m.from_user LIKE ? OR COALESCE(m.sender_name, '') LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        with get_connection() as conn:
+            total_row = conn.execute(f"SELECT COUNT(*) FROM unified_messages m {where_sql}", params).fetchone()
+            rows = conn.execute(
+                f"""
+                SELECT
+                    m.*,
+                    COALESCE(a.attachments_count, 0) AS attachments_count,
+                    COALESCE(d.deliveries_total, 0) AS deliveries_total,
+                    COALESCE(d.deliveries_delivered, 0) AS deliveries_delivered,
+                    COALESCE(d.deliveries_failed, 0) AS deliveries_failed,
+                    COALESCE(d.deliveries_pending, 0) AS deliveries_pending
+                FROM unified_messages m
+                LEFT JOIN (
+                    SELECT source, msg_id, COUNT(*) AS attachments_count
+                    FROM attachments
+                    GROUP BY source, msg_id
+                ) a ON a.source = m.source AND a.msg_id = m.msg_id
+                LEFT JOIN (
+                    SELECT
+                        source,
+                        msg_id,
+                        COUNT(*) AS deliveries_total,
+                        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS deliveries_delivered,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS deliveries_failed,
+                        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS deliveries_pending
+                    FROM deliveries
+                    GROUP BY source, msg_id
+                ) d ON d.source = m.source AND d.msg_id = m.msg_id
+                {where_sql}
+                ORDER BY COALESCE(m.created_at, m.updated_at) DESC, m.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                [*params, limit, offset],
+            ).fetchall()
+
+        return {
+            "items": [DatabaseService._message_row_to_dict(row, include_raw=False) for row in rows],
+            "total": int(total_row[0] or 0),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @staticmethod
+    def get_message_detail(source: str, msg_id: str) -> Optional[Dict[str, Any]]:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM unified_messages WHERE source = ? AND msg_id = ?",
+                (source, msg_id),
+            ).fetchone()
+            if not row:
+                return None
+            attachments = conn.execute(
+                "SELECT * FROM attachments WHERE source = ? AND msg_id = ? ORDER BY id",
+                (source, msg_id),
+            ).fetchall()
+            deliveries = conn.execute(
+                """
+                SELECT * FROM deliveries
+                WHERE source = ? AND msg_id = ?
+                ORDER BY updated_at DESC
+                """,
+                (source, msg_id),
+            ).fetchall()
+
+        delivery_items = []
+        for delivery in deliveries:
+            item = _row_to_dict(delivery) or {}
+            item["metadata"] = _loads_json(item.pop("metadata_json") or "{}", {})
+            delivery_items.append(item)
+
+        return {
+            "message": DatabaseService._message_row_to_dict(row, include_raw=True),
+            "attachments": [_row_to_dict(attachment) or {} for attachment in attachments],
+            "deliveries": delivery_items,
+        }
+
+    @staticmethod
+    def _message_row_to_dict(row: sqlite3.Row, include_raw: bool = False) -> Dict[str, Any]:
+        item = _row_to_dict(row) or {}
+        if include_raw:
+            item["raw_data"] = _loads_json(item.get("raw_data"), {})
+        else:
+            item.pop("raw_data", None)
+        return item
 
     @staticmethod
     def get_message(source: str, msg_id: str) -> Optional[UnifiedMessage]:
@@ -428,7 +632,7 @@ class DatabaseService:
                 "SELECT * FROM attachments WHERE source = ? AND msg_id = ?",
                 (source, msg_id),
             ).fetchall()
-        raw_data = json.loads(row["raw_data"] or "{}")
+        raw_data = _loads_json(row["raw_data"] or "{}", {})
         return UnifiedMessage(
             msg_id=row["msg_id"],
             source=row["source"],

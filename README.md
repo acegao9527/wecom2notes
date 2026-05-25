@@ -81,16 +81,31 @@ Docker 默认将 `HOST_NOTES_DIR` 挂载到容器 `/notes`。
 
 ## 管理接口
 
+- `GET /admin`：跳转到内置管理台。
+- `GET /admin/ui/`：管理台静态前端。
 - `GET /`：健康检查。
 - `GET /openapi.json`：OpenAPI。
 - `GET /metrics`：Prometheus 文本 metrics。
+- `GET /admin/overview`：管理台总览数据。
 - `GET /admin/target-types`：查看支持的 target 类型。
 - `GET /admin/destinations`：查看投递目标。
 - `POST /admin/destinations`：创建或更新投递目标。
+- `PUT /admin/destinations/{destination_id}`：更新投递目标。
+- `PATCH /admin/destinations/{destination_id}/enabled`：启用或停用投递目标。
+- `DELETE /admin/destinations/{destination_id}`：删除投递目标及关联路由。
+- `POST /admin/destinations/{destination_id}/verify`：验证目标配置。
 - `GET /admin/routes`：查看路由规则。
 - `POST /admin/routes`：创建路由规则。
+- `PUT /admin/routes/{route_id}`：更新路由规则。
+- `PATCH /admin/routes/{route_id}/enabled`：启用或停用路由规则。
+- `DELETE /admin/routes/{route_id}`：删除路由规则。
+- `POST /admin/routes/test`：测试一条模拟消息会命中哪些目标。
 - `GET /admin/deliveries`：查看投递状态。
+- `GET /admin/messages`：筛选和查看统一消息。
+- `GET /admin/messages/{source}/{msg_id}`：查看消息详情、附件和投递记录。
 - `POST /admin/replay`：按 `source + msg_id` 手动重放。
+
+管理接口默认不启用鉴权。生产环境建议配置 `ADMIN_TOKEN`，配置后管理台会要求输入 token，并通过 `X-Admin-Token` 调用 API。
 
 ## 兼容 Craft 绑定
 

@@ -39,13 +39,14 @@ class BindingService:
                     # 更新
                     cursor.execute("""
                         UPDATE user_mappings
-                        SET craft_link_id = ?, craft_document_id = ?, craft_token = ?, display_name = ?, updated_at = ?
+                        SET craft_link_id = ?, craft_document_id = ?, craft_token = ?, display_name = ?, is_enabled = ?, updated_at = ?
                         WHERE wecom_openid = ?
                     """, (
                         create.craft_link_id,
                         create.craft_document_id,
                         create.craft_token,
                         create.display_name,
+                        int(create.is_enabled),
                         datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         create.wecom_openid
                     ))
@@ -53,34 +54,36 @@ class BindingService:
                 else:
                     # 插入
                     cursor.execute("""
-                        INSERT INTO user_mappings (wecom_openid, craft_link_id, craft_document_id, craft_token, display_name)
-                        VALUES (?, ?, ?, ?, ?)
+                        INSERT INTO user_mappings (wecom_openid, craft_link_id, craft_document_id, craft_token, display_name, is_enabled)
+                        VALUES (?, ?, ?, ?, ?, ?)
                     """, (
                         create.wecom_openid,
                         create.craft_link_id,
                         create.craft_document_id,
                         create.craft_token,
-                        create.display_name
+                        create.display_name,
+                        int(create.is_enabled),
                     ))
                     binding_id = cursor.lastrowid
 
                 conn.commit()
-                return BindingService.get_binding_by_openid(create.wecom_openid)
+                return BindingService.get_binding_by_openid(create.wecom_openid, enabled_only=False)
 
         except Exception as e:
             logger.error(f"[Binding] 创建绑定失败: openid={create.wecom_openid}, error={e}")
             return None
 
     @staticmethod
-    def get_binding_by_openid(openid: str) -> Optional[UserBinding]:
+    def get_binding_by_openid(openid: str, enabled_only: bool = True) -> Optional[UserBinding]:
         """根据企微OpenID获取绑定"""
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT * FROM user_mappings WHERE wecom_openid = ? AND is_enabled = 1",
-                    (openid,)
-                )
+                sql = "SELECT * FROM user_mappings WHERE wecom_openid = ?"
+                params = [openid]
+                if enabled_only:
+                    sql += " AND is_enabled = 1"
+                cursor.execute(sql, params)
                 row = cursor.fetchone()
                 if row:
                     return BindingService._row_to_binding(row)
@@ -113,6 +116,22 @@ class BindingService:
                 return cursor.rowcount > 0
         except Exception as e:
             logger.error(f"[Binding] 删除绑定失败: openid={openid}, error={e}")
+            return False
+
+    @staticmethod
+    def set_binding_enabled(openid: str, is_enabled: bool) -> bool:
+        """启用或停用绑定。"""
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE user_mappings SET is_enabled = ?, updated_at = ? WHERE wecom_openid = ?",
+                    (int(is_enabled), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), openid),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"[Binding] 更新绑定状态失败: openid={openid}, error={e}")
             return False
 
     @staticmethod

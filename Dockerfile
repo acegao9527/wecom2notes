@@ -18,6 +18,7 @@ COPY src /app/src
 # Copy project root files
 COPY main.py .
 COPY config /app/config
+COPY ui /app/ui
 
 # Copy SDK libraries (both x86_64 and ARM64)
 COPY lib /app/lib

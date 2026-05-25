@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wecom2notes 管理台</title>
+    <link rel="stylesheet" href="./admin-console.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">W2N</div>
+          <div>
+            <strong>wecom2notes</strong>
+            <span>消息归档管理台</span>
+          </div>
+        </div>
+        <nav class="nav-list" aria-label="主导航">
+          <button class="nav-item active" data-view="overview"><span>OV</span>总览</button>
+          <button class="nav-item" data-view="targets"><span>TG</span>目标</button>
+          <button class="nav-item" data-view="routes"><span>RT</span>路由</button>
+          <button class="nav-item" data-view="deliveries"><span>DL</span>投递</button>
+          <button class="nav-item" data-view="messages"><span>MS</span>消息</button>
+          <button class="nav-item" data-view="bindings"><span>CB</span>Craft 绑定</button>
+        </nav>
+        <div class="sidebar-footer">
+          <div><span>API</span><strong id="apiStatus">checking</strong></div>
+          <div><span>鉴权</span><strong id="authStatus">checking</strong></div>
+          <button id="logoutButton" class="ghost-button" type="button">清除 Token</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1 id="pageTitle">总览</h1>
+            <p id="pageHint">企业微信消息归档、投递目标和失败重试</p>
+          </div>
+          <div class="toolbar">
+            <input id="globalSearch" class="search" type="search" placeholder="搜索消息、目标或路由" />
+            <button id="refreshButton" class="button" type="button">刷新</button>
+            <a class="button" href="/scalar" target="_blank" rel="noreferrer">OpenAPI</a>
+          </div>
+        </header>
+
+        <section id="authPanel" class="auth-panel hidden">
+          <div>
+            <h2>需要管理 Token</h2>
+            <p>当前服务已配置 ADMIN_TOKEN。输入后会保存在本机浏览器 localStorage 中。</p>
+          </div>
+          <form id="authForm" class="inline-form">
+            <input name="token" type="password" placeholder="ADMIN_TOKEN" autocomplete="current-password" required />
+            <button class="button primary" type="submit">保存并连接</button>
+          </form>
+        </section>
+
+        <div id="notice" class="notice hidden"></div>
+        <section id="content" class="content"></section>
+      </main>
+    </div>
+
+    <template id="overviewTemplate">
+      <div class="metrics-grid" data-slot="metrics"></div>
+      <div class="grid two">
+        <section class="panel">
+          <header class="panel-head">
+            <div>
+              <h2>运行链路</h2>
+              <p>回调、归档拉取、解析、落库和投递</p>
+            </div>
+          </header>
+          <div class="pipeline">
+            <div><strong>回调触发</strong><span>POST /wecom/callback</span></div>
+            <div><strong>归档拉取</strong><span>SDK GetChatData</span></div>
+            <div><strong>解密解析</strong><span>parse message</span></div>
+            <div><strong>统一落库</strong><span>INSERT OR IGNORE</span></div>
+            <div><strong>目标投递</strong><span>router + adapter</span></div>
+          </div>
+        </section>
+        <section class="panel">
+          <header class="panel-head">
+            <div>
+              <h2>运行环境</h2>
+              <p>来自 /admin/overview</p>
+            </div>
+          </header>
+          <div class="kv-list" data-slot="runtime"></div>
+        </section>
+      </div>
+      <div class="grid two">
+        <section class="panel">
+          <header class="panel-head">
+            <div>
+              <h2>最近失败</h2>
+              <p>可直接进入投递页重放</p>
+            </div>
+          </header>
+          <div data-slot="failed"></div>
+        </section>
+        <section class="panel">
+          <header class="panel-head">
+            <div>
+              <h2>最近消息</h2>
+              <p>统一消息审计入口</p>
+            </div>
+          </header>
+          <div data-slot="recentMessages"></div>
+        </section>
+      </div>
+    </template>
+
+    <template id="targetsTemplate">
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>目标管理</h2>
+            <p>管理 Craft、Obsidian、Markdown、Logseq、Notion、WebDAV 和 Git 目标</p>
+          </div>
+          <button class="button primary" data-action="new-target" type="button">新增目标</button>
+        </header>
+        <div class="table-wrap" data-slot="targetsTable"></div>
+      </section>
+      <section class="panel form-panel hidden" data-slot="targetFormPanel">
+        <header class="panel-head">
+          <div>
+            <h2 data-slot="targetFormTitle">新增目标</h2>
+            <p>config 会按目标类型保存为 JSON</p>
+          </div>
+        </header>
+        <form id="targetForm" class="form-grid">
+          <input type="hidden" name="original_id" />
+          <label>目标 ID<input name="id" required placeholder="obsidian-local" /></label>
+          <label>名称<input name="name" required placeholder="Local Obsidian Vault" /></label>
+          <label>类型<select name="target_type" required></select></label>
+          <label>状态<select name="is_enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
+          <label class="span-4">配置 JSON<textarea name="config" rows="9" spellcheck="false"></textarea></label>
+          <div class="form-actions span-4">
+            <button class="button primary" type="submit">保存目标</button>
+            <button class="button" type="button" data-action="cancel-form">取消</button>
+          </div>
+        </form>
+      </section>
+    </template>
+
+    <template id="routesTemplate">
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>路由规则</h2>
+            <p>按来源、发送人、群聊、类型和关键词匹配目标</p>
+          </div>
+          <button class="button primary" data-action="new-route" type="button">新增规则</button>
+        </header>
+        <div class="table-wrap" data-slot="routesTable"></div>
+      </section>
+      <section class="panel form-panel hidden" data-slot="routeFormPanel">
+        <header class="panel-head">
+          <div>
+            <h2 data-slot="routeFormTitle">新增规则</h2>
+            <p>留空的匹配条件表示不过滤</p>
+          </div>
+        </header>
+        <form id="routeForm" class="form-grid">
+          <input type="hidden" name="id" />
+          <label>名称<input name="name" placeholder="全部企微消息 -> ClawDoc" /></label>
+          <label>来源<input name="source" value="wecom" required /></label>
+          <label>发送人<input name="from_user" placeholder="可选" /></label>
+          <label>群聊<input name="chat_id" placeholder="可选" /></label>
+          <label>消息类型<input name="msg_type" placeholder="text / image / file" /></label>
+          <label>关键词<input name="keyword" placeholder="可选" /></label>
+          <label>目标<select name="destination_id" required></select></label>
+          <label>状态<select name="is_enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
+          <label class="span-4">模板<textarea name="template" rows="4" placeholder="可选"></textarea></label>
+          <div class="form-actions span-4">
+            <button class="button primary" type="submit">保存规则</button>
+            <button class="button" type="button" data-action="cancel-form">取消</button>
+          </div>
+        </form>
+      </section>
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>路由测试</h2>
+            <p>输入一条模拟消息，查看会命中哪些目标</p>
+          </div>
+        </header>
+        <form id="routeTestForm" class="form-grid compact">
+          <label>发送人<input name="from_user" value="preview-user" /></label>
+          <label>群聊<input name="chat_id" /></label>
+          <label>类型<input name="msg_type" value="text" /></label>
+          <label>内容<input name="content" value="日报" /></label>
+          <div class="form-actions span-4">
+            <button class="button" type="submit">测试命中</button>
+          </div>
+        </form>
+        <div class="result-box" data-slot="routeTestResult"></div>
+      </section>
+    </template>
+
+    <template id="deliveriesTemplate">
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>投递状态</h2>
+            <p>查看失败、待处理和已完成投递，并支持重放</p>
+          </div>
+          <div class="filter-row">
+            <select id="deliveryStatus">
+              <option value="">全部</option>
+              <option value="failed">失败</option>
+              <option value="pending">待处理</option>
+              <option value="delivered">已完成</option>
+            </select>
+          </div>
+        </header>
+        <div class="table-wrap" data-slot="deliveriesTable"></div>
+      </section>
+    </template>
+
+    <template id="messagesTemplate">
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>消息审计</h2>
+            <p>筛选统一消息，查看附件、原始 JSON 和投递记录</p>
+          </div>
+        </header>
+        <form id="messageFilterForm" class="filter-grid">
+          <input name="source" placeholder="source" value="wecom" />
+          <input name="from_user" placeholder="from_user" />
+          <input name="chat_id" placeholder="chat_id" />
+          <input name="msg_type" placeholder="msg_type" />
+          <input name="keyword" placeholder="关键词" />
+          <button class="button" type="submit">筛选</button>
+        </form>
+        <div class="message-layout">
+          <div class="table-wrap" data-slot="messagesTable"></div>
+          <aside class="detail-panel" data-slot="messageDetail"></aside>
+        </div>
+      </section>
+    </template>
+
+    <template id="bindingsTemplate">
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>Craft 绑定</h2>
+            <p>兼容企微文本绑定命令和 /bindings API</p>
+          </div>
+        </header>
+        <form id="bindingForm" class="form-grid">
+          <input type="hidden" name="editing_openid" />
+          <label>企微 OpenID<input name="wecom_openid" required /></label>
+          <label>显示名<input name="display_name" /></label>
+          <label>Craft link_id<input name="craft_link_id" required /></label>
+          <label>Craft document_id<input name="craft_document_id" required /></label>
+          <label class="span-2">Craft token<input name="craft_token" type="password" required /></label>
+          <label>状态<select name="is_enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">保存绑定</button>
+            <button class="button" type="button" data-action="verify-binding-form">验证</button>
+          </div>
+        </form>
+      </section>
+      <section class="panel">
+        <header class="panel-head">
+          <div>
+            <h2>绑定列表</h2>
+            <p>Token 不在列表中回显，编辑时需重新输入</p>
+          </div>
+        </header>
+        <div class="table-wrap" data-slot="bindingsTable"></div>
+      </section>
+    </template>
+
+    <script src="./admin-console.js" defer></script>
+  </body>
+</html>

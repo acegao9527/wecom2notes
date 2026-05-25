@@ -3,14 +3,26 @@
 """
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
+from src.api.auth import require_admin
 from src.models.binding import BindingCreate, BindingResponse, UserBinding
 from src.services.binding_service import BindingService, verify_craft_access
 
 logger = logging.getLogger(__name__)
 
-binding_router = APIRouter(prefix="/bindings", tags=["Bindings"])
+binding_router = APIRouter(prefix="/bindings", tags=["Bindings"], dependencies=[Depends(require_admin)])
+
+
+class BindingEnabledPayload(BaseModel):
+    is_enabled: bool
+
+
+class CraftVerifyPayload(BaseModel):
+    link_id: str
+    document_id: str
+    token: str | None = None
 
 
 @binding_router.get("", response_model=list[BindingResponse])
@@ -23,7 +35,7 @@ async def list_bindings():
 @binding_router.get("/{openid}", response_model=BindingResponse)
 async def get_binding(openid: str):
     """根据企微 OpenID 获取绑定"""
-    binding = BindingService.get_binding_by_openid(openid)
+    binding = BindingService.get_binding_by_openid(openid, enabled_only=False)
     if not binding:
         raise HTTPException(status_code=404, detail="绑定不存在")
     return binding
@@ -66,10 +78,19 @@ async def delete_binding(openid: str):
     return {"status": "success", "message": "绑定已删除"}
 
 
+@binding_router.patch("/{openid}/enabled")
+async def set_binding_enabled(openid: str, payload: BindingEnabledPayload):
+    """启用或停用用户绑定。"""
+    success = BindingService.set_binding_enabled(openid, payload.is_enabled)
+    if not success:
+        raise HTTPException(status_code=404, detail="绑定不存在或更新失败")
+    return {"status": "success", "is_enabled": payload.is_enabled}
+
+
 @binding_router.post("/verify")
-async def verify_craft(link_id: str, document_id: str, token: str = None):
+async def verify_craft(payload: CraftVerifyPayload):
     """验证 Craft 链接和文档是否可访问"""
-    ok, msg = verify_craft_access(link_id, document_id, token)
+    ok, msg = verify_craft_access(payload.link_id, payload.document_id, payload.token)
     if ok:
         return {"status": "success", "message": f"验证成功: {msg}"}
     else:

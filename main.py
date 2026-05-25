@@ -7,6 +7,7 @@ import logging
 import os
 import uvicorn
 from contextlib import asynccontextmanager
+from pathlib import Path
 from dotenv import load_dotenv
 from src.utils.logger import setup_logging
 
@@ -89,6 +90,8 @@ async def shutdown_event():
 # 6. 创建 FastAPI 应用
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from scalar_fastapi import get_scalar_api_reference
 
 app = FastAPI(
@@ -124,6 +127,15 @@ app.include_router(craft_router)
 app.include_router(binding_router)
 app.include_router(admin_router)
 app.include_router(metrics_router)
+
+UI_DIR = Path(__file__).resolve().parent / "ui"
+if UI_DIR.exists():
+    app.mount("/admin/ui", StaticFiles(directory=str(UI_DIR), html=True), name="admin-ui")
+
+
+@app.get("/admin", include_in_schema=False)
+async def admin_console():
+    return RedirectResponse(url="/admin/ui/admin-console.html")
 
 
 @app.get("/")

@@ -26,6 +26,7 @@ class BindingCreate(BaseModel):
     craft_document_id: str
     craft_token: Optional[str] = None
     display_name: Optional[str] = None
+    is_enabled: bool = True
 
 
 class BindingResponse(BaseModel):
@@ -37,3 +38,4 @@ class BindingResponse(BaseModel):
     display_name: Optional[str]
     is_enabled: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None
