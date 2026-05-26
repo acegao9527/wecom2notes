@@ -71,6 +71,14 @@ async def startup_event():
         from src.services.database import DatabaseService
         DatabaseService.run_migrations()
         startup_logger.info("Database migrations initialized.")
+        stats = DatabaseService.migrate_legacy_craft_bindings()
+        if stats["destinations_created"] or stats["routes_created"]:
+            startup_logger.info(
+                "Legacy Craft bindings migrated: "
+                f"bindings={stats['bindings']}, "
+                f"destinations_created={stats['destinations_created']}, "
+                f"routes_created={stats['routes_created']}"
+            )
     except Exception as e:
         startup_logger.error(f"Failed to init database: {e}")
 

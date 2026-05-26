@@ -2,7 +2,7 @@
 
 企业微信消息同步到笔记软件的开源服务。
 
-`wecom2notes` 从企业微信会话内容存档拉取消息，统一落到 SQLite，再按路由规则投递到 Craft、Obsidian/Markdown、Logseq、Notion、WebDAV 或 Git 管理的笔记库。
+`wecom2notes` 从企业微信会话内容存档拉取消息，统一落到 SQLite，再按路由规则投递到 Craft、Obsidian/Markdown、Logseq、Notion、WebDAV、Git 管理的笔记库或 HTTP 接口。
 
 ## 支持矩阵
 
@@ -15,6 +15,7 @@
 | Notion | 已支持 | 支持 page append 或 database page |
 | WebDAV | 已支持 | 通过 GET/PUT 追加远程 Markdown 文件 |
 | Git 笔记库 | 已支持 | 写入 Markdown 后可选自动提交 |
+| HTTP 接口 | 已支持 | 通过 POST/PUT/PATCH/GET 把统一消息投递到 webhook |
 | 个人微信自动抓取 | 不属于首期稳定能力 | 可通过导入器处理导出的聊天文件 |
 
 ## 架构
@@ -30,10 +31,10 @@ Storage + Queue
   SQLite / source_cursors / deliveries
 
 Router
-  user binding / DB routes / config/routes.json / env targets
+  legacy Craft binding migration / DB routes / config/routes.json / env targets
 
 Target Adapter
-  Craft / Obsidian / Markdown / Logseq / Notion / WebDAV / Git
+  Craft / Obsidian / Markdown / Logseq / Notion / WebDAV / Git / HTTP
 ```
 
 ## 快速开始
@@ -137,6 +138,7 @@ python scripts/import_messages.py path/to/export.csv --source import
 
 - [企业微信配置](docs/wecom.md)
 - [Craft 目标](docs/craft.md)
+- [HTTP 目标](docs/http.md)
 - [Obsidian / Markdown 目标](docs/obsidian.md)
 - [部署](docs/deployment.md)
 - [排障](docs/troubleshooting.md)

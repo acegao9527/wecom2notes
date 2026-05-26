@@ -30,4 +30,6 @@ curl -X POST http://localhost:8001/bindings \
   }'
 ```
 
+服务启动时会扫描旧版 `user_mappings` 绑定，并为每个绑定补齐一个 `craft:{wecom_openid}` 投递目标和一条按 `from_user` 匹配的路由。这个迁移是幂等的，只创建缺失项，不覆盖已经在管理台里调整过的目标或路由。
+
 投递状态可在 `GET /admin/deliveries` 查看。

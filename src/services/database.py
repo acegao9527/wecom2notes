@@ -278,6 +278,82 @@ class DatabaseService:
         return TargetConfig(destination_id, name, target_type, config)
 
     @staticmethod
+    def migrate_legacy_craft_bindings() -> Dict[str, int]:
+        """把旧版 Craft 用户绑定补齐到 destinations/routes。
+
+        迁移只在目标或路由缺失时创建，不覆盖已经迁移后的目标配置，避免启动时覆盖管理台里的人工调整。
+        """
+        stats = {"bindings": 0, "destinations_created": 0, "routes_created": 0}
+        with get_connection() as conn:
+            rows = conn.execute("SELECT * FROM user_mappings ORDER BY id").fetchall()
+            for row in rows:
+                openid = row["wecom_openid"]
+                if not openid:
+                    continue
+                stats["bindings"] += 1
+                destination_id = f"craft:{openid}"
+                display_name = row["display_name"] if "display_name" in row.keys() else None
+                is_enabled = bool(row["is_enabled"]) if "is_enabled" in row.keys() else True
+
+                destination = conn.execute(
+                    "SELECT id FROM destinations WHERE id = ?",
+                    (destination_id,),
+                ).fetchone()
+                if not destination:
+                    config = {
+                        "link_id": row["craft_link_id"],
+                        "document_id": row["craft_document_id"],
+                        "token": row["craft_token"] if "craft_token" in row.keys() else None,
+                        "legacy_binding_openid": openid,
+                        "migrated_from": "user_mappings",
+                    }
+                    conn.execute(
+                        """
+                        INSERT INTO destinations
+                        (id, name, target_type, config_json, is_enabled)
+                        VALUES (?, ?, 'craft', ?, ?)
+                        """,
+                        (
+                            destination_id,
+                            display_name or f"Craft {openid}",
+                            json.dumps(config, ensure_ascii=False),
+                            int(is_enabled),
+                        ),
+                    )
+                    stats["destinations_created"] += 1
+
+                route = conn.execute(
+                    """
+                    SELECT id FROM routes
+                    WHERE destination_id = ?
+                      AND source = 'wecom'
+                      AND from_user = ?
+                      AND chat_id IS NULL
+                      AND msg_type IS NULL
+                      AND keyword IS NULL
+                    LIMIT 1
+                    """,
+                    (destination_id, openid),
+                ).fetchone()
+                if not route:
+                    conn.execute(
+                        """
+                        INSERT INTO routes
+                        (name, source, from_user, destination_id, is_enabled)
+                        VALUES (?, 'wecom', ?, ?, ?)
+                        """,
+                        (
+                            f"{display_name or openid} -> Craft",
+                            openid,
+                            destination_id,
+                            int(is_enabled),
+                        ),
+                    )
+                    stats["routes_created"] += 1
+            conn.commit()
+        return stats
+
+    @staticmethod
     def list_destinations(enabled_only: bool = False) -> List[Dict[str, Any]]:
         sql = "SELECT * FROM destinations"
         params: tuple[Any, ...] = ()

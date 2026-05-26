@@ -18,10 +18,10 @@ class MessageRouter:
 
     def resolve_targets(self, msg: UnifiedMessage) -> List[TargetConfig]:
         targets: List[TargetConfig] = []
-        targets.extend(self._legacy_craft_targets(msg))
         targets.extend(self._database_targets(msg))
         targets.extend(self._config_file_targets(msg))
         targets.extend(self._env_targets(msg))
+        targets.extend(self._legacy_craft_targets(msg))
         return self._dedupe(targets)
 
     def _legacy_craft_targets(self, msg: UnifiedMessage) -> List[TargetConfig]:
@@ -29,6 +29,8 @@ class MessageRouter:
             return []
         binding = BindingService.get_binding_by_openid(msg.from_user)
         if not binding:
+            return []
+        if DatabaseService.get_destination_record(f"craft:{binding.wecom_openid}"):
             return []
         return [
             TargetConfig(

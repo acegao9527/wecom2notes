@@ -5,6 +5,7 @@ from typing import Dict
 
 from src.core.interfaces import TargetAdapter
 from src.targets.craft import CraftTarget
+from src.targets.http import HttpTarget
 from src.targets.markdown import GitMarkdownTarget, LogseqTarget, MarkdownFilesystemTarget, ObsidianTarget
 from src.targets.notion import NotionTarget
 from src.targets.webdav import WebDAVTarget
@@ -18,6 +19,7 @@ _ADAPTERS: Dict[str, TargetAdapter] = {
     "notion": NotionTarget(),
     "webdav": WebDAVTarget(),
     "git": GitMarkdownTarget(),
+    "http": HttpTarget(),
 }
 
 

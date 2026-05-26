@@ -10,7 +10,7 @@
 ## 已覆盖功能
 
 - 总览：健康状态、metrics、当前 seq、处理链路。
-- 目标管理：Craft、Obsidian、Markdown、Logseq、Notion、WebDAV、Git 目标的新增、编辑、删除、启停和验证。
+- 目标管理：Craft、Obsidian、Markdown、Logseq、Notion、WebDAV、Git、HTTP 目标的新增、编辑、删除、启停和验证。
 - 路由规则：source、from_user、chat_id、msg_type、keyword 到 destination 的新增、编辑、删除、启停和测试命中。
 - 投递队列：failed、pending、delivered 状态筛选与重放入口。
 - 消息审计：统一消息、附件、原始 JSON 和投递结果。
